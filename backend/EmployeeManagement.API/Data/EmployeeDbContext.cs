@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using EmployeeManagement.API.Models;
+using EmployeeManagement.API.Dtos;
 
 namespace EmployeeManagement.API.Data
 {
@@ -29,6 +30,22 @@ namespace EmployeeManagement.API.Data
             //     .HasFilter("[status] = active");  // Only enforce uniqueness for active jobs
 
             // Ensure only one active job per employee (optional - could enforce via service layer)
+        }
+
+        public async Task<List<EmployeeDto>> GetAllEmployeesAsync()
+        {
+            return await Employees
+                .Select(e => new EmployeeDto
+                {
+                    Id = e.Id,
+                    FirstName = e.FirstName,
+                    MiddleName = e.MiddleName,
+                    LastName = e.LastName,
+                    DateOfBirth = e.DateOfBirthEncrypted,
+                    Gender = e.Gender,
+                    Address = e.Address
+                })
+                .ToListAsync();
         }
     }
 }

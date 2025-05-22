@@ -1,4 +1,5 @@
 using EmployeeManagement.API.Data;
+using EmployeeManagement.API.Dtos;
 using EmployeeManagement.API.Models;
 using EmployeeManagement.API.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -19,20 +20,36 @@ namespace EmployeeManagement.API.Controllers
             _encryptionService = encryptionService;
         }
 
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<EmployeeDto>>> GetEmployees()
+        {
+            // Assuming you have a method in your DbContext or repository to get all employees
+            var employees = await _context.GetAllEmployeesAsync();
+
+            return Ok(employees);
+        }
+
         // POST: api/employees
         [HttpPost]
-        public async Task<IActionResult> CreateEmployee([FromBody] Employee employee)
+        public async Task<IActionResult> CreateEmployee([FromBody] CreateEmployeeDto dto)
         {
-            // Encrypt DOB
-            if (!DateTime.TryParse(employee.DateOfBirthEncrypted, out var dob))
+            if (!DateTime.TryParse(dto.DateOfBirth, out var dob))
                 return BadRequest("Invalid date format for Date of Birth.");
 
-            employee.DateOfBirthEncrypted = _encryptionService.Encrypt(dob.ToString("yyyy-MM-dd"));
+            var employee = new Employee
+            {
+                FirstName = dto.FirstName,
+                MiddleName = dto.MiddleName,
+                LastName = dto.LastName,
+                Gender = dto.Gender,
+                Address = dto.Address,
+                DateOfBirthEncrypted = _encryptionService.Encrypt(dob.ToString("yyyy-MM-dd"))
+            };
 
             _context.Employees.Add(employee);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetEmployee), new { id = employee.Id }, employee);
+            return CreatedAtAction(nameof(GetEmployee), new { id = employee.Id }, new { employee.Id });
         }
 
         // GET: api/employees/{id}
@@ -46,23 +63,42 @@ namespace EmployeeManagement.API.Controllers
             if (employee == null)
                 return NotFound();
 
-            // Decrypt DOB before returning
+            string decryptedDob;
             try
             {
-                var decryptedDob = _encryptionService.Decrypt(employee.DateOfBirthEncrypted);
-                employee.DateOfBirthEncrypted = decryptedDob;
+                decryptedDob = _encryptionService.Decrypt(employee.DateOfBirthEncrypted);
             }
             catch
             {
-                employee.DateOfBirthEncrypted = "Invalid Encrypted Data";
+                decryptedDob = "Invalid Encrypted Data";
             }
 
-            return Ok(employee);
+            var dto = new EmployeeDto
+            {
+                Id = employee.Id,
+                FirstName = employee.FirstName,
+                MiddleName = employee.MiddleName,
+                LastName = employee.LastName,
+                Gender = employee.Gender,
+                Address = employee.Address,
+                DateOfBirth = decryptedDob,
+                JobPositions = employee.JobPositions.Select(j => new JobPositionDto
+                {
+                    Id = j.Id,
+                    JobName = j.JobName,
+                    StartDate = j.StartDate,
+                    EndDate = j.EndDate,
+                    Salary = j.Salary,
+                    Status = j.Status
+                }).ToList()
+            };
+
+            return Ok(dto);
         }
 
         // POST: api/employees/{employeeId}/jobpositions
         [HttpPost("{employeeId}/jobpositions")]
-        public async Task<IActionResult> AddJobPosition(int employeeId, [FromBody] JobPosition jobPosition)
+        public async Task<IActionResult> AddJobPosition(int employeeId, [FromBody] CreateJobPositionDto dto)
         {
             var employee = await _context.Employees
                 .Include(e => e.JobPositions)
@@ -71,18 +107,27 @@ namespace EmployeeManagement.API.Controllers
             if (employee == null)
                 return NotFound("Employee not found.");
 
-            if (jobPosition.Status.ToLower() == "active")
+            if (dto.Status.ToLower() == "active")
             {
                 bool hasActive = employee.JobPositions.Any(j => j.Status.ToLower() == "active");
                 if (hasActive)
                     return BadRequest("Employee already has an active job.");
             }
 
-            jobPosition.EmployeeId = employeeId;
-            _context.JobPositions.Add(jobPosition);
+            var job = new JobPosition
+            {
+                JobName = dto.JobName,
+                StartDate = dto.StartDate,
+                EndDate = dto.EndDate,
+                Salary = dto.Salary,
+                Status = dto.Status,
+                EmployeeId = employeeId
+            };
+
+            _context.JobPositions.Add(job);
             await _context.SaveChangesAsync();
 
-            return Ok(jobPosition);
+            return Ok(new { job.Id });
         }
     }
 }
